@@ -50,7 +50,7 @@ def get_datasets():
         "datasets": get_all_datasets()
     }
 
-@app.post("/load/{dataset_id}")
+@app.get("/load/{dataset_id}")
 def load(dataset_id: int):
     folder_path = f"datasets/{dataset_id}"
 
@@ -115,18 +115,22 @@ def train(dataset_id: int, request: TrainRequest):
         df = pd.read_excel(file_path)
 
     # Data Preprocessing Pipeline
-    if task != "Clustering" and target not in df.columns:
-        raise ValueError("Target column not found")
-    
-    X = df.drop(columns=[target])
-    y = df[target]
+    if task == "Clustering":
+        X = df
+        y = None
+    else:
+        if target not in df.columns:
+            raise ValueError("Target column not found")
+        X = df.drop(columns=[target])
+        y = df[target]
     
     results = train_model(X, y, task)
 
     joblib.dump(results["model"], f"{folder_path}/final_model.joblib")
 
     return {
-        "best_model": results["best_model_name"]
+        "best_model": results.get("best_model_name"),
+        "metrics": results.get("metrics")
     }
 
 @app.get("/download/{dataset_id}")
