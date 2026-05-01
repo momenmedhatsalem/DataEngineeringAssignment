@@ -2,23 +2,22 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 import joblib
 import os
+import shutil
 import pandas as pd
-from contextlib import asynccontextmanager
-from db import init_db, create_dataset, get_all_datasets
 from model_training import train_model
 from pydantic import BaseModel
 from typing import Literal
+from fastapi.middleware.cors import CORSMiddleware
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup logic
-    init_db()
+app = FastAPI()
 
-    yield  # app runs here
-
-    # Shutdown logic (optional)
-
-app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
@@ -30,9 +29,11 @@ async def upload(file: UploadFile = File(...)):
             detail="Only CSV and XLSX files are allowed"
         )
 
-    dataset_id = create_dataset()
+    folder_path = f"datasets/1"
 
-    folder_path = f"datasets/{dataset_id}"
+    if os.path.exists(folder_path):
+        shutil.rmtree(folder_path)
+
     os.makedirs(folder_path, exist_ok=True)
 
     file_path = os.path.join(folder_path, filename)
@@ -44,15 +45,9 @@ async def upload(file: UploadFile = File(...)):
         "status": "Uploaded Succesfully"
     }
 
-@app.get("/get_all")
-def get_datasets():
-    return {
-        "datasets": get_all_datasets()
-    }
-
 @app.get("/load/{dataset_id}")
 def load(dataset_id: int):
-    folder_path = f"datasets/{dataset_id}"
+    folder_path = f"datasets/1"
 
     if not os.path.exists(folder_path):
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -76,7 +71,7 @@ def load(dataset_id: int):
         df = pd.read_excel(file_path)
 
     return {
-        "dataset_id": dataset_id,
+        "dataset_id": 1,
         "file": data_file,
         "columns": list(df.columns),
         "head": df.head(5).to_dict(orient="records")
@@ -91,7 +86,7 @@ def train(dataset_id: int, request: TrainRequest):
     task = request.task
     target = request.target
 
-    folder_path = f"datasets/{dataset_id}"
+    folder_path = f"datasets/1"
 
     if not os.path.exists(folder_path):
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -113,8 +108,7 @@ def train(dataset_id: int, request: TrainRequest):
         df = pd.read_csv(file_path)
     else:
         df = pd.read_excel(file_path)
-
-    # Data Preprocessing Pipeline
+    
     if task == "Clustering":
         X = df
         y = None
@@ -130,12 +124,13 @@ def train(dataset_id: int, request: TrainRequest):
 
     return {
         "best_model": results.get("best_model_name"),
-        "metrics": results.get("metrics")
+        "metrics": results.get("metrics"),
+        "analysis": results.get("analysis")
     }
 
 @app.get("/download/{dataset_id}")
 def download(dataset_id: int):
-    file_path = f"datasets/{dataset_id}/final_model.joblib"
+    file_path = f"datasets/1/final_model.joblib"
 
     if not os.path.exists(file_path):
         raise HTTPException(

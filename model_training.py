@@ -6,30 +6,34 @@ from sklearn.cluster import KMeans, AgglomerativeClustering
 from sklearn.metrics import accuracy_score, r2_score, silhouette_score
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-from imblearn.pipeline import Pipeline
-from imblearn.over_sampling import SMOTE
-from data_preprocessing import preprocessing_pipeline
+from data_preprocessing import build_model_pipeline, data_analysis
 
 def train_model(X, y, task: str):
     results = {}
-
-    categorical_cols = X.select_dtypes(include="object").columns.tolist()
-    numeric_cols = X.select_dtypes(include="number").columns.tolist()
+    if task != "Clustering":
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        results["analysis"] = data_analysis(X_train, y_train, task)
+    else:
+        results["analysis"] = data_analysis(X, y, task)
+    
 
     if task == "Classification":
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+        param_grids = {
+            "RandomForest": {
+                "model__n_estimators": [100, 200],
+                "model__max_depth": [None, 10, 20]
+            },
+            "GradientBoosting": {
+                "model__n_estimators": [100, 200],
+                "model__learning_rate": [0.05, 0.1]
+            }
+        }
+
         models = {
-            "RandomForest": Pipeline([
-                ("preprocess", preprocessing_pipeline(categorical_cols, numeric_cols)),
-                ("smote", SMOTE()),
-                ("model", RandomForestClassifier(n_estimators=100, random_state=42))
-            ]),
-            "GradientBoosting": Pipeline([
-                ("preprocess", preprocessing_pipeline(categorical_cols, numeric_cols)),
-                ("smote", SMOTE()),
-                ("model", GradientBoostingClassifier(n_estimators=100, random_state=42))
-            ]),
+            "RandomForest": build_model_pipeline(RandomForestClassifier(n_estimators=100, random_state=42), results["analysis"], param_grids["RandomForest"]),
+            "GradientBoosting": build_model_pipeline(GradientBoostingClassifier(n_estimators=100, random_state=42), results["analysis"], param_grids["GradientBoosting"]),
         }
         best_name, best_model, best_score = None, None, -1
         for name, model in models.items():
@@ -58,16 +62,15 @@ def train_model(X, y, task: str):
 
     elif task == "Regression":
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        param_grids = {
+            "Ridge": {
+                "model__alpha": [0.1, 1.0, 10.0]
+            }
+        }
 
         models = {
-            "LinearRegression": Pipeline([
-                ("preprocess", preprocessing_pipeline(categorical_cols, numeric_cols)),
-                ("model", LinearRegression())
-            ]),
-            "Ridge": Pipeline([
-                ("preprocess", preprocessing_pipeline(categorical_cols, numeric_cols)),
-                ("model", Ridge(alpha=1.0))
-            ]),
+            "LinearRegression": build_model_pipeline(LinearRegression(), results["analysis"]),
+            "Ridge": build_model_pipeline(Ridge(alpha=1.0), results["analysis"], param_grids["Ridge"]),
         }
         best_name, best_model, best_score = None, None, -np.inf
         for name, model in models.items():
@@ -91,29 +94,25 @@ def train_model(X, y, task: str):
         }
 
     elif task == "Clustering":
-        models = {
-            "KMeans": Pipeline([
-                ("preprocess", preprocessing_pipeline(categorical_cols, numeric_cols)),
-                ("model", KMeans(n_clusters=3, random_state=42, n_init=10))
-            ]),
-            "Agglomerative": Pipeline([
-                ("preprocess", preprocessing_pipeline(categorical_cols, numeric_cols)),
-                ("model", AgglomerativeClustering(n_clusters=3))
-            ]),
-        }
+
         best_name, best_model, best_score = None, None, -1
-        for name, model in models.items():
-            labels = model.fit_predict(X)
-            X_transformed = model.named_steps["preprocess"].transform(X)
-            score = silhouette_score(X_transformed, labels)
-            if score > best_score:
-                best_name, best_model, best_score = name, model, score
+        for k in range(2, 11):
+            models = {
+                "KMeans": build_model_pipeline(KMeans(n_clusters=k, random_state=42, n_init=10), results["analysis"]),
+                "Agglomerative": build_model_pipeline(AgglomerativeClustering(n_clusters=k), results["analysis"]),
+            }
+            for name, model in models.items():
+                labels = model.fit_predict(X)
+                X_transformed = model.pipeline.named_steps["preprocess"].transform(X)
+                score = silhouette_score(X_transformed, labels)
+                if score > best_score:
+                    best_name, best_model, best_score = name, model, score
 
         results["best_model_name"] = best_name
         results["model"] = best_model
         labels = best_model.fit_predict(X)
         # compute silhouette on transformed features
-        X_transformed = best_model.named_steps["preprocess"].transform(X)
+        X_transformed = best_model.pipeline.named_steps["preprocess"].transform(X)
         sil = silhouette_score(X_transformed, labels)
         results["metrics"] = {
             "silhouette": float(sil),
