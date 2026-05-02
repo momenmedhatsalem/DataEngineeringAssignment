@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import "./App.css";
 import Upload from "./components/Upload";
 import TaskSelector from "./components/TaskSelector";
 import Results from "./components/Results";
 import axios from "axios";
+
+const API = import.meta.env.VITE_API_URL as string;
 
 export default function App() {
   const [preview, setPreview] = useState<any | null>(null);
@@ -17,19 +19,13 @@ export default function App() {
   const handleTrain = async () => {
     setError(null);
     if ((task === "Classification" || task === "Regression") && !target) {
-      setError("Please select a target column");
+      setError("Please select a target column before training.");
       return;
     }
-
     try {
       setLoading(true);
-      const resp = await axios.post("http://127.0.0.1:8000/train/1", {
-        task,
-        target,
-      });
-      const data = resp.data;
-      // backend returns metrics object
-      setMetrics(data.metrics || { best_model: data.best_model });
+      const resp = await axios.post(`${API}/train/1`, { task, target });
+      setMetrics(resp.data.metrics || { best_model: resp.data.best_model });
     } catch (err: any) {
       setError(err?.response?.data?.detail || err.message || "Training failed");
     } finally {
@@ -40,7 +36,7 @@ export default function App() {
   const handleDownload = async () => {
     try {
       setLoading(true);
-      const resp = await fetch("http://127.0.0.1:8000/download/1");
+      const resp = await fetch(`${API}/download/1`);
       if (!resp.ok) throw new Error("Download failed");
       const blob = await resp.blob();
       const url = window.URL.createObjectURL(blob);
@@ -59,31 +55,85 @@ export default function App() {
   };
 
   return (
-    <div className="container py-4">
-      <h3 className="mb-3">AutoML Frontend</h3>
+    <div className="app-shell">
+      {/* ── Nav ── */}
+      <nav className="topnav">
+        <div className="topnav-brand">
+          <div className="topnav-brand-dot" />
+          AutoML Studio
+        </div>
+        <div className="topnav-status">
+          <div className="status-dot" />
+          API connected
+        </div>
+      </nav>
 
-      {error && <div className="alert alert-danger">{error}</div>}
+      <main className="main-content">
+        {error && (
+          <div className="alert alert-danger">
+            <span>⚠️</span> {error}
+          </div>
+        )}
 
-      <Upload onLoaded={setPreview} setColumns={setColumns} setError={setError} setLoading={setLoading} />
+        {/* ── Loading bar ── */}
+        {loading && <div className="progress-bar" />}
 
-      <div className="row">
-        <div className="col-md-6">
-          <TaskSelector columns={columns} selectedTask={task} selectedTarget={target} onTaskChange={(t) => { setTask(t); setTarget(null);} } onTargetChange={setTarget} />
+        <div className="grid-2">
+          {/* ── Left panel ── */}
+          <div className="left-panel">
+            <Upload
+              onLoaded={d => { setPreview(d); setMetrics(null); }}
+              setColumns={setColumns}
+              setError={setError}
+              setLoading={setLoading}
+            />
 
-          <div className="d-flex gap-2 mb-3">
-            <button className="btn btn-success" onClick={handleTrain} disabled={loading}>{loading ? 'Training...' : 'Train Model'}</button>
-            <button className="btn btn-outline-secondary" onClick={handleDownload} disabled={loading}>{loading ? 'Please wait...' : 'Download Model'}</button>
+            <TaskSelector
+              columns={columns}
+              selectedTask={task}
+              selectedTarget={target}
+              onTaskChange={t => { setTask(t); setTarget(null); setMetrics(null); }}
+              onTargetChange={setTarget}
+            />
+
+            <div className="action-row">
+              <button
+                className="btn btn-success"
+                onClick={handleTrain}
+                disabled={loading || !preview}
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                {loading ? <><span className="spinner" />Training…</> : <><span>🚀</span> Train Model</>}
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={handleDownload}
+                disabled={loading || !metrics}
+              >
+                <span>💾</span> Save Model
+              </button>
+            </div>
+
+            <Results task={task} metrics={metrics} />
           </div>
 
-          <Results task={task} metrics={metrics} />
-        </div>
+          {/* ── Right panel: dataset preview ── */}
+          <div className="card" style={{ alignSelf: "start" }}>
+            <div className="card-header">
+              <div className="card-title">
+                <div className="card-icon icon-blue">🗂️</div>
+                Dataset Preview
+              </div>
+              {preview && (
+                <span className="badge badge-accent">
+                  {preview.columns?.length} cols
+                </span>
+              )}
+            </div>
 
-        <div className="col-md-6">
-          <div className="card p-3">
-            <h5>Dataset Preview</h5>
             {preview?.head ? (
-              <div style={{ overflowX: "auto" }}>
-                <table className="table table-sm">
+              <div className="preview-wrap">
+                <table className="data-table">
                   <thead>
                     <tr>
                       {preview.columns.map((c: string) => <th key={c}>{c}</th>)}
@@ -92,18 +142,23 @@ export default function App() {
                   <tbody>
                     {preview.head.map((row: any, i: number) => (
                       <tr key={i}>
-                        {preview.columns.map((c: string) => <td key={c + i}>{String(row[c])}</td>)}
+                        {preview.columns.map((c: string) => (
+                          <td key={c + i}>{String(row[c])}</td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <div>No preview available. Upload a dataset to see a preview.</div>
+              <div className="empty-state">
+                <div className="empty-icon">📭</div>
+                <div className="empty-text">Upload a dataset to see a preview</div>
+              </div>
             )}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

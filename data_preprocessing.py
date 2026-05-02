@@ -76,10 +76,15 @@ def data_analysis(X, y, task):
     y_needs_encoding = y_series.dtype == "object"
 
     is_imbalanced = False
-    if len(y_series) > 0:
-        dist = y_series.value_counts(normalize=True)
-        if dist.min() < 0.3:
-            is_imbalanced = True
+    min_class_count = 0
+    if task == "Classification" and len(y_series) > 0:
+        from sklearn.utils.multiclass import type_of_target
+        if type_of_target(y_series.dropna()) in ("binary", "multiclass"):
+            counts = y_series.value_counts()
+            min_class_count = int(counts.min())
+            dist = counts / len(y_series)
+            if dist.min() < 0.3:
+                is_imbalanced = True
 
     analysis.update({
         "drop_missing": drop_missing,
@@ -94,12 +99,13 @@ def data_analysis(X, y, task):
         "cols_with_missing": cols_with_missing,
         "y_needs_encoding": y_needs_encoding,
         "is_imbalanced": is_imbalanced,
+        "min_class_count": min_class_count,
         "task": task
     })
 
     return analysis
 
-def build_model_pipeline(model, analysis, param_grid=None):
+def build_model_pipeline(model, analysis, param_grid=None, cv=5):
     numeric_cols = analysis["numeric_cols"]
     low_cat = analysis["low_count"]
     high_cat = analysis["high_count"]
@@ -129,8 +135,9 @@ def build_model_pipeline(model, analysis, param_grid=None):
 
     steps = [("preprocess", preprocess)]
 
-    if task == "Classification" and analysis["is_imbalanced"]:
-        steps.append(("smote", SMOTE()))
+    if task == "Classification" and analysis["is_imbalanced"] and analysis["min_class_count"] >= 2:
+        safe_k = max(1, min(5, int(analysis["min_class_count"] * 0.8) - 1))
+        steps.append(("smote", SMOTE(k_neighbors=safe_k)))
 
     steps.append(("model", model))
 
@@ -140,7 +147,7 @@ def build_model_pipeline(model, analysis, param_grid=None):
         pipeline = GridSearchCV(
             pipeline,
             param_grid=param_grid,
-            cv=3,
+            cv=cv,
             scoring="accuracy" if task == "Classification" else "r2",
             n_jobs=-1
         )

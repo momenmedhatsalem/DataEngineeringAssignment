@@ -66,15 +66,21 @@ def load(dataset_id: int):
     file_path = os.path.join(folder_path, data_file)
 
     if data_file.endswith(".csv"):
-        df = pd.read_csv(file_path)
+        try:
+            df = pd.read_csv(file_path, encoding="utf-8")
+        except UnicodeDecodeError:
+            df = pd.read_csv(file_path, encoding="latin-1")
     else:
         df = pd.read_excel(file_path)
+
+    preview = df.head(5)
+    head = preview.astype(object).where(pd.notna(preview), other=None).to_dict(orient="records")
 
     return {
         "dataset_id": 1,
         "file": data_file,
         "columns": list(df.columns),
-        "head": df.head(5).to_dict(orient="records")
+        "head": head
     }
 
 class TrainRequest(BaseModel):
@@ -105,16 +111,19 @@ def train(dataset_id: int, request: TrainRequest):
     file_path = os.path.join(folder_path, data_file)
 
     if data_file.endswith(".csv"):
-        df = pd.read_csv(file_path)
+        try:
+            df = pd.read_csv(file_path, encoding="utf-8")
+        except UnicodeDecodeError:
+            df = pd.read_csv(file_path, encoding="latin-1")
     else:
         df = pd.read_excel(file_path)
-    
+
     if task == "Clustering":
         X = df
         y = None
     else:
         if target not in df.columns:
-            raise ValueError("Target column not found")
+            raise HTTPException(status_code=400, detail="Target column not found")
         X = df.drop(columns=[target])
         y = df[target]
     
@@ -125,7 +134,6 @@ def train(dataset_id: int, request: TrainRequest):
     return {
         "best_model": results.get("best_model_name"),
         "metrics": results.get("metrics"),
-        "analysis": results.get("analysis")
     }
 
 @app.get("/download/{dataset_id}")
