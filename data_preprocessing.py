@@ -152,7 +152,4 @@ def build_model_pipeline(model, analysis, param_grid=None, cv=5):
             n_jobs=-1
         )
 
-    return ModelWithEncoder(
-        pipeline=pipeline,
-        y_needs_encoding=analysis["y_needs_encoding"]
-    )
+    return pipeline

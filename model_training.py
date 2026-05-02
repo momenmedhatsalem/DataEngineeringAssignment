@@ -10,10 +10,11 @@ from sklearn.metrics import precision_score, recall_score, f1_score, confusion_m
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.compose import TransformedTargetRegressor
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import LabelEncoder
 from data_preprocessing import build_model_pipeline, data_analysis
 
 def train_model(X, y, task: str):
-    results = {}
+    results = {"le": None}
     if task != "Clustering":
         # Drop rows where target is NaN before splitting
         mask = pd.Series(y).notna().values
@@ -24,6 +25,11 @@ def train_model(X, y, task: str):
         results["analysis"] = data_analysis(X, None, task)
 
     if task == "Classification":
+        if (results["analysis"]["y_needs_encoding"]):
+            results["le"] = LabelEncoder()
+            y_train = results["le"].fit_transform(y_train)
+            y_test = results["le"].transform(y_test)
+
         # cv must not exceed min_class_count — if a class has 1 sample it cannot be split at all
         # so skip GridSearchCV entirely and just fit directly
         safe_cv = min(5, results["analysis"]["min_class_count"])

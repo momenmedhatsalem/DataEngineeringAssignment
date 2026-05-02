@@ -129,7 +129,7 @@ def train(dataset_id: int, request: TrainRequest):
     
     results = train_model(X, y, task)
 
-    joblib.dump(results["model"], f"{folder_path}/final_model.joblib")
+    joblib.dump({"model": results["model"], "label_encoder": results["le"]}, f"{folder_path}/final_model.joblib")
 
     return {
         "best_model": results.get("best_model_name"),
