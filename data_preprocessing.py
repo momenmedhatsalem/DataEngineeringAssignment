@@ -43,12 +43,9 @@ def data_analysis(X, y, task):
     analysis = {}
 
     missing_ratio = X.isnull().mean()
-    drop_missing = missing_ratio[missing_ratio > 0.7].index.tolist()
+    drop_missing = missing_ratio[missing_ratio > 0.5].index.tolist()
 
-    unique_ratio = X.nunique() / len(X)
-    drop_unique = unique_ratio[unique_ratio > 0.95].index.tolist()
-
-    initial_drop = list(set(drop_missing + drop_unique))
+    initial_drop = list(set(drop_missing))
     X_reduced = X.drop(columns=initial_drop, errors="ignore")
 
     categorical_cols = X_reduced.select_dtypes(include="object").columns.tolist()
@@ -86,7 +83,6 @@ def data_analysis(X, y, task):
 
     analysis.update({
         "drop_missing": drop_missing,
-        "drop_unique": drop_unique,
         "drop_low_variance": drop_low_variance,
         "drop_cols": all_drops,
 
