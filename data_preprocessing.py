@@ -75,14 +75,14 @@ def data_analysis(X, y, task):
 
     cols_with_missing = X_reduced.columns[X_reduced.isnull().any()].tolist()
 
-    y_series = pd.Series(y)
+    y_series = pd.Series(y) if y is not None else pd.Series([], dtype=object)
     y_needs_encoding = y_series.dtype == "object"
 
-
     is_imbalanced = False
-    dist = y_series.value_counts(normalize=True)
-    if dist.min() < 0.3:
-        is_imbalanced = True
+    if len(y_series) > 0:
+        dist = y_series.value_counts(normalize=True)
+        if dist.min() < 0.3:
+            is_imbalanced = True
 
     analysis.update({
         "drop_missing": drop_missing,
